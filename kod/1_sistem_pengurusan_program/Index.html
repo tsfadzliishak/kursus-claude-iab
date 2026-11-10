@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+    header { background: #1f3864; color: #fff; padding: 14px 20px; font-size: 18px; }
+    nav { padding: 10px 20px 0; }
+    nav button { border: 0; padding: 10px 16px; background: #e3e7ef; cursor: pointer; border-radius: 6px 6px 0 0; }
+    nav button.aktif { background: #fff; font-weight: bold; }
+    section { display: none; background: #fff; margin: 0 20px 20px; padding: 20px; border-radius: 0 6px 6px 6px; }
+    section.aktif { display: block; }
+    label { display: block; margin-top: 10px; font-size: 14px; }
+    input, select, textarea { width: 100%; max-width: 420px; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+    button.utama { margin-top: 14px; padding: 10px 18px; background: #1f3864; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: 14px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    th { background: #f0f2f6; }
+    .mesej { margin-top: 10px; font-size: 14px; }
+    .ralat { color: #b00020; }
+    .bar { background: #4a6fa5; height: 14px; display: inline-block; vertical-align: middle; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <header>Sistem Pengurusan Program IAB (Latihan)</header>
+  <nav>
+    <button class="aktif" onclick="tukar('daftar', this)">Pendaftaran</button>
+    <button onclick="tukar('nilai', this)">Penilaian</button>
+    <button onclick="tukar('papan', this)">Papan Pemuka</button>
+  </nav>
+
+  <section id="daftar" class="aktif">
+    <h3>Daftar Peserta</h3>
+    <form id="fDaftar" onsubmit="daftar(event)">
+      <label>Nama <input name="nama" required></label>
+      <label>E-mel <input name="emel" type="email" required></label>
+      <label>Jantina
+        <select name="jantina"><option>Lelaki</option><option>Perempuan</option></select>
+      </label>
+      <label>Negeri <input name="negeri" required></label>
+      <label>Jenis Sekolah
+        <select name="jenis"><option>SK</option><option>SMK</option></select>
+      </label>
+      <button class="utama" type="submit">Daftar</button>
+    </form>
+    <div id="mDaftar" class="mesej"></div>
+    <h3>Senarai Peserta</h3>
+    <div id="senarai">Memuatkan...</div>
+  </section>
+
+  <section id="nilai">
+    <h3>Borang Penilaian Sesi</h3>
+    <form id="fNilai" onsubmit="nilai(event)">
+      <label>ID Peserta <select name="id" id="pilihId" required></select></label>
+      <label>Sesi <select name="sesi" id="pilihSesi" required></select></label>
+      <label>Skor (1 = Sangat tidak setuju, 5 = Sangat setuju)
+        <select name="skor" required>
+          <option value="5">5</option><option value="4">4</option><option value="3">3</option>
+          <option value="2">2</option><option value="1">1</option>
+        </select>
+      </label>
+      <label>Komen <textarea name="komen" rows="3"></textarea></label>
+      <button class="utama" type="submit">Hantar</button>
+    </form>
+    <div id="mNilai" class="mesej"></div>
+  </section>
+
+  <section id="papan">
+    <h3>Min Skor Mengikut Sesi</h3>
+    <div id="ringkasan">Memuatkan...</div>
+  </section>
+
+  <script>
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function mesej(id, teks, ralat) {
+      var el = document.getElementById(id);
+      el.textContent = teks;
+      el.className = 'mesej' + (ralat ? ' ralat' : '');
+    }
+    function dataBorang(f) {
+      var d = {};
+      new FormData(f).forEach(function (v, k) { d[k] = v; });
+      return d;
+    }
+    function tukar(id, btn) {
+      document.querySelectorAll('section').forEach(function (s) { s.classList.remove('aktif'); });
+      document.querySelectorAll('nav button').forEach(function (b) { b.classList.remove('aktif'); });
+      document.getElementById(id).classList.add('aktif');
+      btn.classList.add('aktif');
+      if (id === 'papan') muatPapan();
+    }
+
+    function muatSenarai() {
+      google.script.run
+        .withSuccessHandler(function (senarai) {
+          var html = '<table><tr><th>ID</th><th>Nama</th><th>Jantina</th><th>Negeri</th><th>Jenis</th><th>E-mel</th></tr>';
+          senarai.forEach(function (p) {
+            html += '<tr><td>' + esc(p.id) + '</td><td>' + esc(p.nama) + '</td><td>' + esc(p.jantina) +
+                    '</td><td>' + esc(p.negeri) + '</td><td>' + esc(p.jenis) + '</td><td>' + esc(p.emel) + '</td></tr>';
+          });
+          document.getElementById('senarai').innerHTML = senarai.length ? html + '</table>' : 'Belum ada peserta.';
+          document.getElementById('pilihId').innerHTML = senarai.map(function (p) {
+            return '<option value="' + esc(p.id) + '">' + esc(p.id + ' – ' + p.nama) + '</option>';
+          }).join('');
+        })
+        .withFailureHandler(function (e) { mesej('mDaftar', 'Ralat: ' + e.message, true); })
+        .senaraiPeserta();
+    }
+
+    function daftar(e) {
+      e.preventDefault();
+      var f = e.target;
+      mesej('mDaftar', 'Menyimpan...');
+      google.script.run
+        .withSuccessHandler(function (id) { mesej('mDaftar', 'Berjaya. ID peserta: ' + id); f.reset(); muatSenarai(); })
+        .withFailureHandler(function (err) { mesej('mDaftar', 'Ralat: ' + err.message, true); })
+        .daftarPeserta(dataBorang(f));
+    }
+
+    function nilai(e) {
+      e.preventDefault();
+      var f = e.target;
+      mesej('mNilai', 'Menghantar...');
+      google.script.run
+        .withSuccessHandler(function () { mesej('mNilai', 'Terima kasih. Penilaian disimpan.'); f.komen.value = ''; })
+        .withFailureHandler(function (err) { mesej('mNilai', 'Ralat: ' + err.message, true); })
+        .hantarPenilaian(dataBorang(f));
+    }
+
+    function muatPapan() {
+      document.getElementById('ringkasan').textContent = 'Memuatkan...';
+      google.script.run
+        .withSuccessHandler(function (data) {
+          if (!data.length) { document.getElementById('ringkasan').textContent = 'Belum ada penilaian.'; return; }
+          var html = '<table><tr><th>Sesi</th><th>Min (1–5)</th><th>n</th></tr>';
+          data.forEach(function (d) {
+            var warna = d.min < 3.6 ? '#c0504d' : '#4a6fa5';
+            html += '<tr><td>' + esc(d.sesi) + '</td><td><span class="bar" style="width:' + (d.min * 40) +
+                    'px;background:' + warna + '"></span>' + d.min.toFixed(2) + '</td><td>' + d.n + '</td></tr>';
+          });
+          document.getElementById('ringkasan').innerHTML = html + '</table>';
+        })
+        .withFailureHandler(function (err) { document.getElementById('ringkasan').textContent = 'Ralat: ' + err.message; })
+        .ringkasanPenilaian();
+    }
+
+    google.script.run
+      .withSuccessHandler(function (sesi) {
+        document.getElementById('pilihSesi').innerHTML = sesi.map(function (s) {
+          return '<option>' + esc(s) + '</option>';
+        }).join('');
+      })
+      .getSesi();
+    muatSenarai();
+  </script>
+</body>
+</html>

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f6f8; color: #222; }
+    header { background: #1f3864; color: #fff; padding: 14px 20px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+    header h1 { font-size: 18px; margin: 0; }
+    header small { opacity: .85; }
+    main { padding: 16px 20px; }
+    .kad-baris { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .kad { background: #fff; border-radius: 6px; padding: 12px; border-left: 5px solid #4a6fa5; }
+    .kad b { display: block; font-size: 26px; margin-top: 4px; }
+    .kad.merah { border-color: #c0504d; } .kad.hijau { border-color: #3a8f5c; } .kad.kuning { border-color: #d39e00; }
+    .panel { background: #fff; border-radius: 6px; padding: 14px; margin-top: 14px; }
+    .panel h2 { font-size: 15px; margin: 0 0 10px; }
+    .fasa { display: grid; grid-template-columns: 130px 1fr 50px; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; }
+    .trek { background: #e6e9ef; height: 12px; border-radius: 6px; overflow: hidden; }
+    .isi { background: #4a6fa5; height: 100%; }
+    .penapis { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    select, input, textarea { padding: 6px; font-size: 14px; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e3e3e3; padding: 6px; text-align: left; vertical-align: top; }
+    th { background: #f0f2f6; position: sticky; top: 0; }
+    tr.lewat td { background: #fbebeb; }
+    .label { padding: 2px 6px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
+    .Selesai { background: #e5f4e4; } .Sedang { background: #e7f1fb; } .Tersekat { background: #f9eeda; } .Belum { background: #f0efec; }
+    button { padding: 5px 10px; border: 0; border-radius: 4px; background: #1f3864; color: #fff; cursor: pointer; }
+    .borang { background: #f7f9fc; padding: 8px; display: grid; gap: 6px; max-width: 520px; }
+    .ralat { color: #b00020; }
+    .jadual { overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pemantauan Tugasan PKPB Siri 3/2026</h1>
+    <small id="masa">Memuatkan...</small>
+  </header>
+  <main>
+    <div class="kad-baris">
+      <div class="kad">Jumlah tugasan<b id="kJumlah">-</b></div>
+      <div class="kad hijau">Selesai<b id="kSelesai">-</b></div>
+      <div class="kad">Sedang<b id="kSedang">-</b></div>
+      <div class="kad kuning">Tersekat<b id="kSekat">-</b></div>
+      <div class="kad merah">Lewat<b id="kLewat">-</b></div>
+      <div class="kad">Kemajuan keseluruhan<b id="kPeratus">-</b></div>
+    </div>
+
+    <div class="panel">
+      <h2>Kemajuan mengikut fasa</h2>
+      <div id="fasa"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Senarai tugasan</h2>
+      <div class="penapis">
+        <select id="tPemilik" onchange="papar()"><option value="">Semua pemilik</option></select>
+        <select id="tFasa" onchange="papar()"><option value="">Semua fasa</option></select>
+        <select id="tStatus" onchange="papar()">
+          <option value="">Semua status</option><option>Belum mula</option><option>Sedang</option>
+          <option>Selesai</option><option>Tersekat</option><option value="LEWAT">Lewat sahaja</option>
+        </select>
+      </div>
+      <div class="jadual"><table id="jadual"></table></div>
+      <p id="mesej"></p>
+    </div>
+  </main>
+
+  <script>
+    var DATA = { tugasan: [] };
+    var sedangEdit = null;
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function unik(kunci) {
+      return DATA.tugasan.map(function (t) { return t[kunci]; })
+        .filter(function (v, i, a) { return v && a.indexOf(v) === i; });
+    }
+    function isiPilihan(id, nilai, label) {
+      var el = document.getElementById(id), pilih = el.value;
+      el.innerHTML = '<option value="">' + label + '</option>' +
+        nilai.map(function (v) { return '<option>' + esc(v) + '</option>'; }).join('');
+      el.value = pilih;
+    }
+
+    function muat() {
+      if (sedangEdit) return; // jangan muat semula semasa pengguna sedang mengisi borang
+      google.script.run
+        .withSuccessHandler(function (d) {
+          DATA = d;
+          document.getElementById('masa').textContent = 'Data live • kemas kini terakhir ' + d.masa + ' • auto setiap 30 saat';
+          isiPilihan('tPemilik', unik('pemilik'), 'Semua pemilik');
+          isiPilihan('tFasa', unik('fasa'), 'Semua fasa');
+          ringkasan();
+          papar();
+        })
+        .withFailureHandler(function (e) { document.getElementById('masa').textContent = 'Ralat: ' + e.message; })
+        .getData();
+    }
+
+    function ringkasan() {
+      var t = DATA.tugasan;
+      function kira(f) { return t.filter(f).length; }
+      document.getElementById('kJumlah').textContent = t.length;
+      document.getElementById('kSelesai').textContent = kira(function (x) { return x.status === 'Selesai'; });
+      document.getElementById('kSedang').textContent = kira(function (x) { return x.status === 'Sedang'; });
+      document.getElementById('kSekat').textContent = kira(function (x) { return x.status === 'Tersekat'; });
+      document.getElementById('kLewat').textContent = kira(function (x) { return x.lewat; });
+      var purata = t.length ? t.reduce(function (s, x) { return s + x.peratus; }, 0) / t.length : 0;
+      document.getElementById('kPeratus').textContent = Math.round(purata) + '%';
+
+      document.getElementById('fasa').innerHTML = unik('fasa').map(function (f) {
+        var ahli = t.filter(function (x) { return x.fasa === f; });
+        var p = Math.round(ahli.reduce(function (s, x) { return s + x.peratus; }, 0) / ahli.length);
+        return '<div class="fasa"><span>' + esc(f) + '</span><div class="trek"><div class="isi" style="width:' + p +
+               '%"></div></div><span>' + p + '%</span></div>';
+      }).join('');
+    }
+
+    function papar() {
+      var p = document.getElementById('tPemilik').value, f = document.getElementById('tFasa').value,
+          s = document.getElementById('tStatus').value;
+      var senarai = DATA.tugasan.filter(function (t) {
+        return (!p || t.pemilik === p) && (!f || t.fasa === f) &&
+               (!s || (s === 'LEWAT' ? t.lewat : t.status === s));
+      });
+      var html = '<tr><th>ID</th><th>Tugasan</th><th>Fasa</th><th>Pemilik</th><th>Tarikh akhir</th>' +
+                 '<th>Status</th><th>% Siap</th><th>Catatan</th><th>Dikemas kini</th><th></th></tr>';
+      senarai.forEach(function (t) {
+        html += '<tr class="' + (t.lewat ? 'lewat' : '') + '"><td>' + esc(t.id) + '</td><td>' + esc(t.tugasan) +
+          (t.bergantung ? '<br><small>Bergantung: ' + esc(t.bergantung) + '</small>' : '') + '</td><td>' + esc(t.fasa) +
+          '</td><td>' + esc(t.pemilik) + '</td><td>' + esc(t.akhir) + (t.lewat ? ' <b class="ralat">LEWAT</b>' : '') +
+          '</td><td><span class="label ' + esc(t.status.split(' ')[0]) + '">' + esc(t.status) + '</span></td><td>' + t.peratus +
+          '%</td><td>' + esc(t.catatan) + '</td><td><small>' + esc(t.dikemaskini) + '<br>' + esc(t.oleh) +
+          '</small></td><td><button onclick="buka(\'' + esc(t.id) + '\')">Kemas kini</button></td></tr>';
+        if (sedangEdit === t.id) {
+          html += '<tr><td colspan="10"><div class="borang">' +
+            '<label>Status <select id="eStatus">' + ['Belum mula', 'Sedang', 'Selesai', 'Tersekat'].map(function (x) {
+              return '<option' + (x === t.status ? ' selected' : '') + '>' + x + '</option>'; }).join('') + '</select></label>' +
+            '<label>% Siap <input id="ePeratus" type="number" min="0" max="100" value="' + t.peratus + '"></label>' +
+            '<label>Catatan <textarea id="eCatatan" rows="2">' + esc(t.catatan) + '</textarea></label>' +
+            '<label>Nama anda <input id="eNama" placeholder="Wajib jika e-mel tidak dikesan"></label>' +
+            '<div><button onclick="simpan(\'' + esc(t.id) + '\')">Simpan</button> ' +
+            '<button style="background:#888" onclick="tutup()">Batal</button></div></div></td></tr>';
+        }
+      });
+      document.getElementById('jadual').innerHTML = senarai.length ? html : '<tr><td>Tiada tugasan.</td></tr>';
+    }
+
+    function buka(id) { sedangEdit = id; papar(); }
+    function tutup() { sedangEdit = null; papar(); muat(); }
+
+    function simpan(id) {
+      var mesej = document.getElementById('mesej');
+      mesej.textContent = 'Menyimpan...';
+      mesej.className = '';
+      google.script.run
+        .withSuccessHandler(function () { mesej.textContent = 'Tugasan ' + id + ' dikemas kini.'; tutup(); })
+        .withFailureHandler(function (e) { mesej.textContent = 'Ralat: ' + e.message; mesej.className = 'ralat'; })
+        .kemaskiniTugasan({
+          id: id,
+          status: document.getElementById('eStatus').value,
+          peratus: document.getElementById('ePeratus').value,
+          catatan: document.getElementById('eCatatan').value,
+          nama: document.getElementById('eNama').value
+        });
+    }
+
+    muat();
+    setInterval(muat, 30000);
+  </script>
+</body>
+</html>
